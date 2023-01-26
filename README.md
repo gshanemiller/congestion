@@ -1,5 +1,5 @@
 # Purpose
-The purpose of this repository is to provide a *Practitioner's Guide* to implementing a userspace only network packet congestion control scheme to be used with low-latency a messaging library on intra-corporate networks. This work shall be complete when,
+The purpose of this repository is to provide a *Practitioner's Guide* to implementing a userspace only network packet congestion control scheme to be used with a low-latency messaging library on intra-corporate networks. This work shall be complete when,
 
 * Concepts for congestion control, packet drop/loss are well explained
 * Implementation choices are well described
