@@ -138,7 +138,7 @@ public:
   const double d_beta = 0.8;                        // multiplicative decrease factor
   const double d_delta = 10000000.0;                // additive rate increase 10 million bytes/second
 
-  const double d_minRttUs       = 10;               // minimum actual RTT (20us) not considered
+  const double d_minRttUs       = 10;               // RTT <= (10us) not considered
   const double d_minModelRttUs  = 50;               // minimum model RTT limit (50us); see comments above
   const double d_maxModelRttUs = 500;               // maximum model RTT limit (500 us); see comments above
 
