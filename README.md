@@ -97,3 +97,9 @@ DPDK setting
 [This repository contains a basic Timely model](https://github.com/gshanemiller/congestion/blob/main/experiment/timely_basic/timely.h). It periodically computes negative rates e.g. what the code calls raw values. The raw value is coerced into a valid value by applying min/max comparisons just before returning. The code in [7] is more complicated. It also coerces the raw value by bounding increases/decreases in rate.
 
 So at the time of this writing it's not entirely clear what the algorithm really is. Ideally it'd be possible nail down Timely without getting drawn into a long benchmarking, model-fitting work where its parameters are reverse estimated.
+
+Based on the code as it now stands, the model parameters [do not look right](https://github.com/gshanemiller/congestion/blob/main/experiment/timely_basic/data.png):
+
+* In the second (middle) plot we see that when the starting RTT (here 225us) far off the min, the TX rate drops to the minimum immediately. Once the max RTT is hit (500us at t=0.02sec) it takes until ~0.25sec for the rate to recover even though RTTs are slowly decreasing only
+* In the third (bottom) plot RTTs are sampled at a mean of 60us which is only 10us higher than the model minimum. Even though all RTTs hug the lower end of the model, the TX rate never exceeds 0.04GB/sec which way off the NIC max
+* And as I point out above, there are zillions of raw rates < 0
