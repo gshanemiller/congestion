@@ -98,8 +98,8 @@ DPDK setting
 
 So at the time of this writing it's not entirely clear what the algorithm really is. Ideally it'd be possible nail down Timely without getting drawn into a long benchmarking, model-fitting work where its parameters are reverse estimated.
 
-Based on the code as it now stands, the model parameters [do not look right](https://github.com/gshanemiller/congestion/blob/main/experiment/timely_basic/data.png):
+Based on the code as it now stands, the model parameters [do not look quite right](https://github.com/gshanemiller/congestion/blob/main/experiment/timely_basic/data.png):
 
 * In the second (middle) plot we see that when the starting RTT (here 225us) far off the min, the TX rate drops to the minimum immediately. Once the max RTT is hit (500us at t=0.02sec) it takes until ~0.25sec for the rate to recover even though RTTs are slowly decreasing only
-* In the third (bottom) plot RTTs are sampled at a mean of 60us which is only 10us higher than the model minimum. Even though all RTTs hug the lower end of the model, the TX rate never exceeds 0.04GB/sec which way off the NIC max
+* In the third (bottom) plot RTTs are sampled at a mean of 60us which is only 10us higher than the model minimum. Even though all RTTs hug the lower end of the model, the TX rate never exceeds 0.04GB/sec which way off the NIC max. The problem here is the RTTs uses the gradient calculation. It never adds only because the RTTs only improbably drop under the modelMin of 50us. And since the RTTs fluctuate around 60us going high and lower, the TX rate never budges.
 * And as I point out above, there are zillions of raw rates < 0

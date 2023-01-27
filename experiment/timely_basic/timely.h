@@ -138,7 +138,7 @@ public:
   const double d_beta = 0.8;                        // multiplicative decrease factor
   const double d_delta = 10000000.0;                // additive rate increase 10 million bytes/second
 
-  const double d_minRttUs       = 10;               // RTT <= (10us) not considered
+  const double d_minRttUs       = 20;               // RTT <= (20us) not considered; state unchanged
   const double d_minModelRttUs  = 50;               // minimum model RTT limit (50us); see comments above
   const double d_maxModelRttUs = 500;               // maximum model RTT limit (500 us); see comments above
 
@@ -195,6 +195,7 @@ public:
     // 'nowUs>d_prevTimeUs'. 'rttUs' represents the most recent RTT (round trip time) completed and should not include
     // any serialization time. See comments top of file. Note that 'rttUs' less than or equal 'd_minRttUs' are ignored,
     // and state is not changed. Also note the calculated rate 'r' will always satisfy 'd_minRateBps<=r<=d_maxRateBps'.
+    // Finally, this implementation uses the patched algoritm in [1]s section 4.3
 
   Timely& operator=(const Timely& rhs) = delete;
     // Assignment operator not provided
@@ -267,22 +268,16 @@ double Timely::update(double rttUs, double nowUs) {
   const double newRttDiff = rttUs - d_prevRttUs;
   d_prevRttUs = rttUs;
 
-  // Calculate radhika's 'delta_factor'. This is a unitless number requiring
-  // all terms use the same units
-  double deltaFactor = static_cast<double>(nowUs-d_prevTimeUs)/d_minRttUs;
-  deltaFactor = std::min(deltaFactor, 1.0);
   d_prevTimeUs = nowUs;
 
-  // Update weighted diff aka radhika's 'avg_rtt_diff_'
+  // Update weighted diff
   d_weightedRttDiffUs = ((1-d_alpha)*d_weightedRttDiffUs) + (d_alpha*newRttDiff);
 
   if (rttUs < d_minModelRttUs) {
-    d_lineRateBps += (deltaFactor*d_delta);
+    d_lineRateBps += d_delta;
   } else if (rttUs > d_maxModelRttUs) {
-    const double multDecreaseFactor = deltaFactor * d_beta;
-    d_lineRateBps = d_lineRateBps * (1 - multDecreaseFactor*(1.0-(d_maxModelRttUs/rttUs)));
+    d_lineRateBps = d_lineRateBps * (1 - d_beta*(1.0-(d_maxModelRttUs/rttUs)));
   } else {
-    const double multDecreaseFactor = deltaFactor * d_beta;
     const double rttGradient = d_weightedRttDiffUs / d_minRttUs;
     double weight(-1.0);
     if (rttGradient <= -0.25) {
@@ -293,7 +288,7 @@ double Timely::update(double rttUs, double nowUs) {
       weight = 2*rttGradient + 0.5;
     }
     double error = (rttUs-d_minRttUs) / d_minRttUs;
-    d_lineRateBps = d_lineRateBps*(1.0 - (multDecreaseFactor*weight*error)) + deltaFactor*d_delta*(1-weight);
+    d_lineRateBps = d_lineRateBps*(1.0 - (d_beta*weight*error)) + d_delta*(1-weight);
   }
 
   // Store Timely value as calculated
