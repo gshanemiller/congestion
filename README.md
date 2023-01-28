@@ -106,6 +106,69 @@ the work in (9) into a   in Reinvent library
 DPDK setting
 ```
 
+# Milestone#0: Theoretical Motivation for Timely
+[3] gives the intuition for Timely's use of RTTs (Round Trip Times):
+
+```
+Delay-based congestion control algorithms such as FAST TCP [46] and Compound TCP [44] are inspired by the seminal work
+of TCP Vegas [16]. These interpret RTT increase above a baseline as indicative of congestion: they reduce the sending
+rate if delay is further increased[.]
+```
+
+Increasing RTTs imply there's a congestion point between the data sender and data receiver e.g. top of rack router. Timely's contribution to end-point RTT measurement and application for congestion is rate change:
+
+```
+However, Kelly et al. [33] argue that it is not possible to control the queue size when it is shorter in time than the
+control loop delay ... The most any algorithm can do in these circumstances is to control the distribution of the queue
+occupancy ... TIMELY’s congestion controller achieves low latencies by reacting to the delay gradient or derivative of
+the queuing with respect to time, instead of trying to maintain a standing queue ...  Delay gradient is a proxy for
+the rate mismatch at the bottleneck queue.
+```
+
+eRPC [3] uses Intel's `rdtsc()` to take time stamps eventually converting those measurements to microseconds when Timely's update function is run. [1] uses NIC provided timestamps. RTT is defined in [3] section 3.1:
+
+```
+RTT = t_completion - t_send - Seg/NLR
+    
+where
+    t_completion = timestamp when transmitter got response packet
+    t_send       = timestamp when transmitter sent request packet
+    Seg          = #of bytes in transmitted packet
+    NLR          = NIC line rate (bytes/sec) at which bytes are written onto the wire
+```
+
+In otherwords, RTT is just end-start minus the time it takes serialize bytes onto the wire. For example, it takes 52 µs to serialize 64KB on a 10 Gbps (10 Giga bits/second) NIC connection:
+
+```
+    1/(10*1000*1000*1000) sec/bits * (64*1024*8) bits = .000052428sec ~= 52us
+```
+
+If RTTs are of the same order of 10 as the serialization time, RTT should clearly not be penalized for serialization delays. This time does not reflect congestion outside the transmitting box.
+
+The Timely event loop is:
+
+1. Fix initial sending rate R to preset value
+2. Send data at rate R
+3. Measure the RTT for data just sent
+4. Compute new rate: R = timely(R, r)
+5. Goto 2
+
+The Timely model is equipped with a RTT bound called `[T_low, T_High]` which chooses how the TX rate is updated with a new RTT measure:
+
+```
+0               minModelRtt              maxModelRtt
++--------------------+----------------------+---------------->
+| additive increase  | gradient based +/-   | multiplicative
+| to new rate        | change to new rate   | decrease in new rate
+```
+
+
+
+
+
+
+
+
 # Milestone#1: Basic Timely Model
 [1] probably does the best job at describing the Timely model update function. It fixes a bug in the original algorithm described in [4]. The fluid models in [1] can be found in [2]. However, things get complicated from here. First, eRPC [7] adds factors (`delta_factor, md_factor`) that do not appear in [1]. Its alpha/beta parameters are considerably different. The fluid models [2] are mathlab simulation code. Although easy to follow, the input to the Timely update method takes queue length not RTT. And it's not clear that the fluid model algorithm is a valid for use in code. [1] writes:
 
