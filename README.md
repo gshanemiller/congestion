@@ -40,6 +40,17 @@ In an empty directory do the following assuming you have a C++ tool chain and cm
 
 All tasks/libraries can be found in the './build' directory
 
+# R Plots
+Some test programs produce data plotted with R (freeware stats program) using a provided R script. See individual READMEs for details. You might encounter `ggplot2` unknown or not found. To fix missing R dependencies, run the following commands in the R CLI:
+
+```
+# R packages used here
+install.packages("ggplot2")
+install.packages("gridExtra")
+```
+
+You only need to do this once. R is smart enough to find external source repositories and install. R does not need to be restarted.
+
 # Milestones
 Congestion control involves four major problems:
 
@@ -52,6 +63,13 @@ I suggest the following trajectory. It's valid provided Timely is the goto conge
 
 ```
 Milestones
+0                        
+|----------------------------------------------------------------------------->
+Provide theoretical motivation for
+Timely based on [1,3]
+
+
+Milestones (cont)
 1                        2                          3
 |------------------------+--------------------------+------------------------->
 Simulate Timely in C++   Figure out timestamps.     When to use Timely?
@@ -59,6 +77,7 @@ The goal is to get a     eRPC uses rdtsc. Would     eRPC has a complicated
 good impl of the model   NIC timestamps be better?  way to selectively
                          For Mellanox NICs, how     ignore Timely or use it
                          where are they?
+
 
 Milestones (cont)
 4                        5                          6
@@ -69,6 +88,7 @@ code                     packet level pacing. ACKs  packet drop/reorder. Figure
                          here form RTT. Run sender/ out a way to resend lost
                          receiver pair to test      data in order
 
+
 Milestones (cont)
 7                        8                          9
 |------------------------+--------------------------+------------------------->
@@ -76,6 +96,7 @@ Describe Carousel arch.  Document arch to add       Implement design in (8)
 Delineate where work in  Carousel to (6)            and test/validate it.
 (6) stops and Carousel
 starts.
+
 
 Milestones (cont)
 10                       11
@@ -86,7 +107,7 @@ DPDK setting
 ```
 
 # Milestone#1: Basic Timely Model
-[1] probably does the best job at describing the Timely model update function. It fixes a bug in the original algorithm described in [4]. The fluid models in [1] can be found in [2]. However, things get complicated from here. First, eRPC [7] adds factors (`delta_factor, md_factor`) that do not appear in [1]. Its alpha/beta parameters are considerably different. The fluid models [2] are mathlab simulation code. Although easy to follow, the input the Timely update method is takes inputs of queue length not RTT. And it's not clear that the fluid model algorithm is a valid for use in code. [1] writes:
+[1] probably does the best job at describing the Timely model update function. It fixes a bug in the original algorithm described in [4]. The fluid models in [1] can be found in [2]. However, things get complicated from here. First, eRPC [7] adds factors (`delta_factor, md_factor`) that do not appear in [1]. Its alpha/beta parameters are considerably different. The fluid models [2] are mathlab simulation code. Although easy to follow, the input to the Timely update method takes queue length not RTT. And it's not clear that the fluid model algorithm is a valid for use in code. [1] writes:
 
 ```
       The fluid model (by its very nature) essentially assumes smooth and continuous transmission of data. The TIMELY
@@ -94,12 +115,20 @@ DPDK setting
       chunks.
 ```
 
-[This repository contains a basic Timely model](https://github.com/gshanemiller/congestion/blob/main/experiment/timely_basic/timely.h). It periodically computes negative rates e.g. what the code calls raw values. The raw value is coerced into a valid value by applying min/max comparisons just before returning. The code in [7] is more complicated. It also coerces the raw value by bounding increases/decreases in rate.
+Note that eRPC [6,7] unlike the Timely paper [3] is not sending prepared large chunks of data e.g. 16 or 64Kb. Most RPCs have small requests probably in one packet less than 1K. Responses, however, could be large. 
 
-So at the time of this writing it's not entirely clear what the algorithm really is. Ideally it'd be possible nail down Timely without getting drawn into a long benchmarking, model-fitting work where its parameters are reverse estimated.
+## Timely Basic Model
+[This example implements the patched Timely model from ECN paper](https://github.com/gshanemiller/congestion/blob/main/experiment/timely_basic/timely.h). It periodically computes negative rates e.g. what the code calls raw values. Based on this code, the model parameters [do not look quite right](https://github.com/gshanemiller/congestion/blob/main/experiment/timely_basic/data.png):
 
-Based on the code as it now stands, the model parameters [do not look quite right](https://github.com/gshanemiller/congestion/blob/main/experiment/timely_basic/data.png):
+* Starting in the top-right graph, RTTs start at 225us model mid-point increasing until the model max is hit. Then RTTs descreases only until the TX rate is 80% of NIC bandwidth. It takes a good deal of time for the algorithm to recover to NIC bandwidth and does so very quickly.
+* The bottom-right graph shows what happens then the RTT is centered on 45us under the model minimum and sproatically exceeding the minimum. As long there a good number of packets under RTTs under the minimum, the TX can recover. Periodic RTTs over the min make the overall trend bound around.
+* Bottom-left shows what happens when RTTs are centered on 60us which is between the model min/max but closer to the min
+* Top-left shows what happens when RTTs are centered and the model mid-point
 
-* In the second (middle) plot we see that when the starting RTT (here 225us) far off the min, the TX rate drops to the minimum immediately. Once the max RTT is hit (500us at t=0.02sec) it takes until ~0.25sec for the rate to recover even though RTTs are slowly decreasing only
-* In the third (bottom) plot RTTs are sampled at a mean of 60us which is only 10us higher than the model minimum. Even though all RTTs hug the lower end of the model, the TX rate never exceeds 0.04GB/sec which way off the NIC max. The problem here is the RTTs uses the gradient calculation. It never adds only because the RTTs only improbably drop under the modelMin of 50us. And since the RTTs fluctuate around 60us going high and lower, the TX rate never budges.
-* And as I point out above, there are zillions of raw rates < 0
+## Timely Model As Implemented in eRPC
+[This example implements the eRPC Timely Model with ECN's patch](https://github.com/gshanemiller/congestion/blob/main/experiment/timely_erpc/timely.h). It's alpha/beta/deltas are rather different. eRPC mixes in additional factors (`md_factor, ai_factor, delta_factor`) not in the basic model. eRPC also imposes several limits on the new calculated rate once Timely computations are done.
+
+* Starting in the top-right graph, RTTs start at 475us model mid-point increasing until the model max is hit. Then RTTs descreases only until the TX rate is 80% of NIC bandwidth. It takes a good deal of time for the algorithm to recover to NIC bandwidth but does so gradually.
+* The bottom-right graph shows what happens then the RTT is centered on 45us under the model minimum and sproatically exceeding the minimum. Unlike the basic model, the TX rate stays higher.
+* Bottom-left shows what happens when RTTs are centered on 60us which is between the model min/max but closer to the min
+* Top-left shows what happens when RTTs are centered under the model minimum but exceed the model minimum (stddev=4) which higher frequency
