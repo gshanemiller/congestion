@@ -1,1 +1,2 @@
 add_subdirectory(timely_basic)
+add_subdirectory(timely_erpc)
