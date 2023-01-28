@@ -110,9 +110,9 @@ DPDK setting
 [1] probably does the best job at describing the Timely model update function. It fixes a bug in the original algorithm described in [4]. The fluid models in [1] can be found in [2]. However, things get complicated from here. First, eRPC [7] adds factors (`delta_factor, md_factor`) that do not appear in [1]. Its alpha/beta parameters are considerably different. The fluid models [2] are mathlab simulation code. Although easy to follow, the input to the Timely update method takes queue length not RTT. And it's not clear that the fluid model algorithm is a valid for use in code. [1] writes:
 
 ```
-      The fluid model (by its very nature) essentially assumes smooth and continuous transmission of data. The TIMELY
-      implementation is more bursty, since rate is adjusted by modulating gaps between transmission of 16 or 64KB
-      chunks.
+The fluid model (by its very nature) essentially assumes smooth and continuous transmission of data. The TIMELY
+implementation is more bursty, since rate is adjusted by modulating gaps between transmission of 16 or 64KB
+chunks.
 ```
 
 Note that eRPC [6,7] unlike the Timely paper [3] is not sending prepared large chunks of data e.g. 16 or 64Kb. Most RPCs have small requests probably in one packet less than 1K. Responses, however, could be large. 
