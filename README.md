@@ -126,7 +126,7 @@ Note that eRPC [6,7] unlike the Timely paper [3] is not sending prepared large c
 * Top-left shows what happens when RTTs are centered and the model mid-point
 
 ## Timely Model As Implemented in eRPC
-[This example implements the eRPC Timely Model with ECN's patch](https://github.com/gshanemiller/congestion/blob/main/experiment/timely_erpc/timely.h). It's alpha/beta/deltas are rather different. eRPC mixes in additional factors (`md_factor, ai_factor, delta_factor`) not in the basic model. eRPC also imposes several limits on the new calculated rate once Timely computations are done.
+[This example implements the eRPC Timely Model with ECN's patch](https://github.com/gshanemiller/congestion/blob/main/experiment/timely_erpc/timely.h). It's alpha/beta/deltas are rather different. eRPC mixes in additional factors (`md_factor, ai_factor, delta_factor`) not in the basic model. eRPC also imposes several limits on the new calculated rate once Timely computations are done. [The resulting TX rates look better](https://github.com/gshanemiller/congestion/blob/main/experiment/timely_erpc/data.png):
 
 * Starting in the top-right graph, RTTs start at 475us model mid-point increasing until the model max is hit. Then RTTs descreases only until the TX rate is 80% of NIC bandwidth. It takes a good deal of time for the algorithm to recover to NIC bandwidth but does so gradually.
 * The bottom-right graph shows what happens then the RTT is centered on 45us under the model minimum and sproatically exceeding the minimum. Unlike the basic model, the TX rate stays higher.
