@@ -125,7 +125,7 @@ the queuing with respect to time, instead of trying to maintain a standing queue
 the rate mismatch at the bottleneck queue.
 ```
 
-eRPC [3] uses Intel's `rdtsc()` to take time stamps eventually converting those measurements to microseconds when Timely's update function is run. [1] uses NIC provided timestamps. RTT is defined in [3] section 3.1:
+eRPC [7] uses Intel's `rdtsc()` to take time stamps eventually converting those measurements to microseconds when Timely's update function is run. [1,3] uses NIC provided timestamps. RTT is defined in [3] section 3.1:
 
 ```
 RTT = t_completion - t_send - Seg/NLR
@@ -153,6 +153,22 @@ The Timely event loop is:
 4. Compute new rate: R = timely(R, r)
 5. Goto 2
 
+[3] section 4.2 describes the model's equations. It envisions N end hosts, or what eRPC calls connected sessions, all sending data simulteanously with a combined rate `y(t) bytes/sec`. The N transmitters share a congestion point e.g. a bottle neck queue. Suppose this CP (Congestion Point) empties its queue at rate `C bytes/sec`, and further suppose CP's queuing delay in time is `q(t)`.
+
+If at any point in time `t` we have `y(t)>C` the congestion point gets worse by the amount `y(t)-C`. Meanwhile CP tries to drain its queue at rate C. Putting these pieces together the change in the queuing delay is:
+
+```
+dq(t)  y(t)-C   (bytes/sec)
+---- = ------   -----------
+ t       C      (bytes/sec)
+```
+
+Ideally Timely will converge on what ECN [1] calls a fixed point where the change is zero. This means senders and CP balance. Some observations are in order. Consider a time instant `t`:
+
+* On the right hand side `y(t)-C` represents the excess bytes above (or below) what C can do. If `y(t)<C` CP can drain the queue faster than incoming data. This makes the rate negative, and vice versa
+* The right hand side divides by `C` making a unitless number representing the ratio of excesss (or deficiency) bytes CP can handle
+* And thus `dq(t)/t` is just the previous point by another name through equality
+
 The Timely model is equipped with a RTT bound called `[T_low, T_High]` which chooses how the TX rate is updated with a new RTT measure:
 
 ```
@@ -161,6 +177,8 @@ The Timely model is equipped with a RTT bound called `[T_low, T_High]` which cho
 | additive increase  | gradient based +/-   | multiplicative
 | to new rate        | change to new rate   | decrease in new rate
 ```
+
+When RTTs are in `[minModelRtt, maxModelRtt]` individual sender rates are computed through the derivative `dq(t)/t`. If the `RTT<minModelRtt` the new rate is just the old rate plus an additive factor. Finally, if `RTT>maxModelRtt` the rate is decreased through a multiplicative factor.  
 
 
 
