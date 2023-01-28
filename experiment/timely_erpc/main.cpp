@@ -76,9 +76,6 @@ void test2() {
   do {
     rttUs -= smallInc;
     nowUs += rttUs;
-    if (nowUs==88197.5) {
-      printf("hit it\n");
-    }
     data.push_back(rttUs);
     timely.update(rttUs, nowUs);
     fprintf(fid, "%lf,%lf,%lf,%lf\n", nowUs, rttUs, timely.rate(), timely.rawRate());
@@ -149,7 +146,7 @@ void test4() {
   fprintf(fid, "# NIC Rate (bytes/sec): %lf, RTTs sampled from Guassian distribution mean=%lf, stddev=%lf\n",
     nicRate, mean, stddev);
 
-  // Now simulate 10s (10,000,000 microseconds) of packet transmissions. At each iteration we randomly sample a RTT
+  // Now simulate 30s (30,000,000 microseconds) of packet transmissions. At each iteration we randomly sample a RTT
   // from 'rttDist'. This RTT time represents a bonafide RTT without serialization. Call this time 'rttUs'. Assuming
   // there's no overhead to transmit the packet, the elapsed time form the last simulated transmission to now is just
   // 'rttUs'. 

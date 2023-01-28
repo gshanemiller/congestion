@@ -287,7 +287,7 @@ double Timely::update(double rttUs, double nowUs) {
     } else {
       weight = 2*rttGradient + 0.5;
     }
-    double error = (rttUs-d_minRttUs) / d_minRttUs;
+    const double error = (rttUs-d_minRttUs) / d_minRttUs;
     d_lineRateBps = d_lineRateBps*(1.0 - (d_beta*weight*error)) + d_delta*(1-weight);
   }
 

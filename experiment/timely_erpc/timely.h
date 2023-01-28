@@ -259,7 +259,7 @@ double Timely::update(double rttUs, double nowUs) {
   assert(nowUs>d_prevTimeUs);
 
   // eRPC Timely "by-pass"
-  if (d_lineRateBps==d_lineRateBps && rttUs<=d_minModelRttUs) {
+  if (d_lineRateBps==d_maxNicBps && rttUs<=d_minModelRttUs) {
     // Do nothing
     return d_lineRateBps;
   }
@@ -300,7 +300,7 @@ double Timely::update(double rttUs, double nowUs) {
     } else {
       weight = 2*rttGradient + 0.5;
     }
-    double error = (rttUs-d_minModelRttUs) / d_minModelRttUs;
+    const double error = (rttUs-d_minModelRttUs) / d_minModelRttUs;
     calculatedRate = d_lineRateBps*(1.0-multDecreaseFactor*weight*error)+addIncreaseFactor*(1-weight);
   }
 
