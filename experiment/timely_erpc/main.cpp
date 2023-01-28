@@ -6,7 +6,7 @@ const double nicRate = 10000000000.0; // NIC line rate 10GBps (giga bytes/sec) a
 
 void test1() {
   // The Timely TX rate estimator
-  Experiment::Timely timely(nicRate, 0);
+  Experiment::Timely timely(nicRate);
 
   // Setup random generators
   std::random_device dev;
@@ -47,7 +47,7 @@ void test1() {
 
 void test2() {
   // The Timely TX rate estimator
-  Experiment::Timely timely(nicRate, 0);
+  Experiment::Timely timely(nicRate);
 
   const double inc  = 5;
   const double smallInc  = 0.5;
@@ -92,7 +92,7 @@ void test2() {
 
 void test3() {
   // The Timely TX rate estimator
-  Experiment::Timely timely(nicRate, 0);
+  Experiment::Timely timely(nicRate);
 
   // Setup random generators
   std::random_device dev;
@@ -133,7 +133,7 @@ void test3() {
 
 void test4() {
   // The Timely TX rate estimator
-  Experiment::Timely timely(nicRate, 0);
+  Experiment::Timely timely(nicRate);
 
   // Setup random generators
   std::random_device dev;
