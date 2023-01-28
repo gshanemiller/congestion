@@ -76,6 +76,9 @@ void test2() {
   do {
     rttUs -= smallInc;
     nowUs += rttUs;
+    if (nowUs==88197.5) {
+      printf("hit it\n");
+    }
     data.push_back(rttUs);
     timely.update(rttUs, nowUs);
     fprintf(fid, "%lf,%lf,%lf,%lf\n", nowUs, rttUs, timely.rate(), timely.rawRate());

@@ -259,8 +259,8 @@ double Timely::update(double rttUs, double nowUs) {
   assert(rttUs>0);
   assert(nowUs>d_prevTimeUs);
 
+  // When 'rttUs' is too small, skip Timely update                                                                      
   if (rttUs<=d_minRttUs) {
-    // Do nothing
     return d_lineRateBps;
   }
 
@@ -313,7 +313,7 @@ std::ostream& Timely::print(std::ostream& stream) const {
   stream << "    delta (additive increase factor)     : " << d_delta                 << std::endl;
   stream << "    minRttUs (RTTs <= ignored)           : " << d_minRttUs              << std::endl;
   stream << "    minModelRttUs (min model RTT model)  : " << d_minModelRttUs         << std::endl;
-  stream << "    maxModelRttUs (mad model RTT model)  : " << d_maxModelRttUs         << std::endl;
+  stream << "    maxModelRttUs (max model RTT model)  : " << d_maxModelRttUs         << std::endl;
   stream << "    NIC bandwidth (bytes/sec)            : " << d_maxNicBps             << std::endl;
   stream << "    minimum computed rate (bytes/sec)    : " << d_minRateBps            << std::endl;
   stream << "    maximum computed rate (bytes/sec)    : " << d_maxRateBps            << std::endl;

@@ -158,11 +158,9 @@ private:
 
 public:
   // CREATORS
-  Timely(double maxNicBps, unsigned sessionCount);
+  Timely(double maxNicBps);
     // Create a Timely object to estimate TX rate in bytes/sec where 'maxNicBps' is the NIC's maximum bandwidth in
-    // bytes/sec, and 'sessionCount' is the number of existing (not including the new session co-managed by this
-    // object) already running, Behavior is defined 'maxNicBps>=1e6'. Upon creation, 'd_lineRateBps' is initialized
-    // to be 'maxNicBps/(sessionCount+1)'.
+    // bytes/sec. Behavior is defined 'maxNicBps>=1e6'. Upon creation, 'd_lineRateBps' is initialized to 'maxNicBps'.
 
   Timely() = delete;
     // Default constructor not provided
@@ -194,8 +192,9 @@ public:
     // and the absolute wall-clock time 'nowUs' (units microseconds). Behavior is defined provided 'rttUs>0' and
     // 'nowUs>d_prevTimeUs'. 'rttUs' represents the most recent RTT (round trip time) completed and should not include
     // any serialization time. See comments top of file. Note that 'rttUs' less than or equal 'd_minRttUs' are ignored,
-    // and state is not changed. Also note the calculated rate 'r' will always satisfy 'd_minRateBps<=r<=d_maxRateBps'.
-    // Finally, this method replicates eRPC's Timely implementation in https://github.com/erpc-io/eRPC
+    // and state is not changed. This method replicates eRPC's Timely implementation in https://github.com/erpc-io/eRPC
+    // with 'kPatched==True'. Finally, eRPC's code runs with RTTs expressed as difference between two 'rdtsc()' values.
+    // Ultimately the RTT sample value is converted to micro-seconds before Timely code is hit. 
 
   Timely& operator=(const Timely& rhs) = delete;
     // Assignment operator not provided
@@ -212,9 +211,9 @@ std::ostream& operator<<(std::ostream& stream, const Timely& object);
 // INLINE DEFINITIONS
 // CREATORS
 inline
-Timely::Timely(double maxNicBps, unsigned sessionCount)
+Timely::Timely(double maxNicBps)
 : d_maxNicBps(maxNicBps)
-, d_lineRateBps(d_maxNicBps/(sessionCount+1.0))
+, d_lineRateBps(maxNicBps)
 , d_rawLineRateBps(d_lineRateBps)
 , d_prevTimeUs(0)
 , d_prevRttUs(d_minRttUs)
@@ -260,13 +259,13 @@ double Timely::update(double rttUs, double nowUs) {
   assert(nowUs>d_prevTimeUs);
 
   // eRPC Timely "by-pass"
-  if (d_lineRateBps==d_lineRateBps && rttUs<=d_minRttUs) {
+  if (d_lineRateBps==d_lineRateBps && rttUs<=d_minModelRttUs) {
     // Do nothing
     return d_lineRateBps;
   }
 
+  // When 'rttUs' is too small, skip Timely update
   if (rttUs<=d_minRttUs) {
-    // Do nothing
     return d_lineRateBps;
   }
 
@@ -276,7 +275,8 @@ double Timely::update(double rttUs, double nowUs) {
   // Update weighted diff
   d_weightedRttDiffUs = ((1-d_alpha)*d_weightedRttDiffUs) + (d_alpha*newRttDiff);
 
-  // eRPC other "factor" helpers
+  // eRPC other "factor" helpers. Delta is a unitless constant requring all
+  // subterms use the same units
   const double deltaFactor = std::min((nowUs-d_prevRttUs)/d_minRttUs, 1.0);
   const double addIncreaseFactor = d_delta * deltaFactor;
   const double multDecreaseFactor = d_beta * deltaFactor;
@@ -301,7 +301,7 @@ double Timely::update(double rttUs, double nowUs) {
       weight = 2*rttGradient + 0.5;
     }
     double error = (rttUs-d_minModelRttUs) / d_minModelRttUs;
-    calculatedRate = d_lineRateBps*(1.0-(multDecreaseFactor*weight*error)+addIncreaseFactor*(1-weight));
+    calculatedRate = d_lineRateBps*(1.0-multDecreaseFactor*weight*error)+addIncreaseFactor*(1-weight);
   }
 
   // Store Timely value as calculated
@@ -329,7 +329,7 @@ std::ostream& Timely::print(std::ostream& stream) const {
   stream << "    delta (additive increase factor)     : " << d_delta                 << std::endl;
   stream << "    minRttUs (RTTs <= ignored)           : " << d_minRttUs              << std::endl;
   stream << "    minModelRttUs (min model RTT model)  : " << d_minModelRttUs         << std::endl;
-  stream << "    maxModelRttUs (mad model RTT model)  : " << d_maxModelRttUs         << std::endl;
+  stream << "    maxModelRttUs (max model RTT model)  : " << d_maxModelRttUs         << std::endl;
   stream << "    NIC bandwidth (bytes/sec)            : " << d_maxNicBps             << std::endl;
   stream << "    minimum computed rate (bytes/sec)    : " << d_minRateBps            << std::endl;
   stream << "    maximum computed rate (bytes/sec)    : " << d_maxRateBps            << std::endl;
