@@ -59,7 +59,7 @@ Congestion control involves four major problems:
 * And with (2) determine when to send new data without exasperbating congestion e.g. [8]
 * Do all of the above without wasting CPU
 
-I suggest the following trajectory. It's valid provided Timely is the goto congestion control method. I report other methods above, howeber, they impose impactical constraints.
+I suggest the following milestone trajectory. It's valid *provided* Timely is the goto congestion control method. I report other methods above, however, they arguably impose impactical constraints.
 
 ```
 Milestones
@@ -143,24 +143,22 @@ In otherwords, RTT is just end-start minus the time it takes serialize bytes ont
     1/(10*1000*1000*1000) sec/bits * (64*1024*8) bits = .000052428sec ~= 52us
 ```
 
-If RTTs are of the same order of 10 as the serialization time, RTT should clearly not be penalized for serialization delays. This time does not reflect congestion outside the transmitting box.
+If RTTs are of the same order as the serialization time, RTT should clearly not be penalized. Serialization does not reflect congestion outside the transmitting box.
 
 The Timely event loop is:
 
-1. Fix initial sending rate R to preset value
+1. Fix initial sending rate R
 2. Send data at rate R
-3. Measure the RTT for data just sent
-4. Compute new rate: R = timely(R, r)
+3. Measure the RTT 'r' for data just sent
+4. Compute new rate R = timely(R, r)
 5. Goto 2
 
-[3] section 4.2 describes the model's equations. It envisions N end hosts, or what eRPC calls connected sessions, all sending data simulteanously with a combined rate `y(t) bytes/sec`. The N transmitters share a congestion point e.g. a bottle neck queue. Suppose this CP (Congestion Point) empties its queue at rate `C bytes/sec`, and further suppose CP's queuing delay in time is `q(t)`.
-
-If at any point in time `t` we have `y(t)>C` the congestion point gets worse by the amount `y(t)-C`. Meanwhile CP tries to drain its queue at rate C. Putting these pieces together the change in the queuing delay is:
+[3] section 4.2 describes the model's equations. It envisions N end hosts, or what eRPC calls connected sessions, all sending data simulteanously with a combined rate `y(t) bytes/sec`. The N transmitters share a congestion point e.g. a bottle neck queue. Suppose this CP (Congestion Point) empties its queue at rate `C bytes/sec`, and further suppose CP's queuing delay in time is `q(t)` (units time). If at any point in time `t` we have `y(t)>C` the congestion point gets worse by the amount `y(t)-C` and vice-versa. Putting these pieces together the change in the queuing delay is:
 
 ```
-dq(t)  y(t)-C   (bytes/sec)
----- = ------   -----------
- t       C      (bytes/sec)
+dq(t) sec    y(t)-C   (bytes/sec)
+----  ---  = ------   -----------
+ dt   sec      C      (bytes/sec)
 ```
 
 Ideally Timely will converge on what ECN [1] calls a fixed point where the change is zero. This means senders and CP balance. Some observations are in order. Consider a time instant `t`:
@@ -169,7 +167,17 @@ Ideally Timely will converge on what ECN [1] calls a fixed point where the chang
 * The right hand side divides by `C` making a unitless number representing the ratio of excesss (or deficiency) bytes CP can handle
 * And thus `dq(t)/t` is just the previous point by another name through equality
 
-The Timely model is equipped with a RTT bound called `[T_low, T_High]` which chooses how the TX rate is updated with a new RTT measure:
+Critically, Timely introduces RTTs by asserting:
+
+```
+dRTT    dq(t)
+---- =  -----
+ dt      dt
+```
+
+Recall Timely claims "it is not possible to control the queue size." Note `q(t)` is the time ("queuing delay") to deplete the queue not queue size according to Timely [3]. But [1] table 2 says `q(t)` is "queue size." Unfortuantely, Timely articles and code do not thoroughly explicate units.
+
+The Timely model is equipped with a RTT bound called `[T_low, T_High]` which selects how the TX rate is updated:
 
 ```
 0               minModelRtt              maxModelRtt
@@ -178,10 +186,70 @@ The Timely model is equipped with a RTT bound called `[T_low, T_High]` which cho
 | to new rate        | change to new rate   | decrease in new rate
 ```
 
-When RTTs are in `[minModelRtt, maxModelRtt]` individual sender rates are computed through the derivative `dq(t)/t`. If the `RTT<minModelRtt` the new rate is just the old rate plus an additive factor. Finally, if `RTT>maxModelRtt` the rate is decreased through a multiplicative factor.  
+When RTTs are in `[minModelRtt, maxModelRtt]` individual sender rates are computed through a derivative related to `dq(t)/t`. If `RTT>maxModelRtt` the rate is decreased through a multiplicative factor. Finally, If the `RTT<minModelRtt` the new rate is just the old rate plus an additive factor. 
+
+This establishes Timely basics. Putting aside the simple additve case, and before addressing the computations for the other two cases, we need to explain Timely's alpha, beta, and normalized gradient terms. 
+
+## EWMA (Alpha)
+EWMA (Exponentially Weight Moving Average) is a variation on a simple moving average where recent terms have a less impact. Since Timely is based on a time series of *RTT changes*, it first smooths out change jitter. This is called `rttDiff` in [1,3] and what I call `emwaDiff` to differentiate between it and `currentRtt-oldRtt`.
+
+```
+emwaDiff_0 = k_0
+emwaDiff_n = alpha*rttDiff_n + (1-alpha)*emwaDiff_(n-1)
+
+where:
+    n         (subscript) is the iteration in recurrence 0,1,2,3...
+    k_0       is the initial value for emwaDiff typically 0
+    alpha     is in [0,1]. lower values smooth more and 1 is no smoothing
+    rttDiff_n is the difference in RTTs at the nth step e.g. rtt_n-rtt_(n-1)
+```
+
+As the recurrence proceeds n=0,1,2,3... later terms contribute less to moving average. [Wikipedia gives the same forumua](https://en.wikipedia.org/wiki/Exponential_smoothing). Example table for alpha=.48. Note how `emwaDiff` changes less drastically then RTT diff:
+
+```
++----------+---------------+----------+-----------+
+| RTT (us) | RTT Diff (us) | emwaDiff | Iteration |
++----------+---------------+----------+-----------+
+| 466		   | 0             | 0        | 0         |
++----------+---------------+----------+-----------+
+| 431	     | -35           | -16.8    | 1         |
++----------+---------------+----------+-----------+
+| 94       | -337          | -178.56  | 2         |
++----------+---------------+----------+-----------+
+| 489      | 395           | 11.04    | 3         |
++----------+---------------+----------+-----------+
+| 351      | -138          | -55.2    | 4         |
++----------+---------------+----------+-----------+
+```
+
+## Normalized Gradient
+The normalized gradient is just `emwaDiff` divided by `D_(minRTT)`. [3] section 4.3 writes:
+
+```
+To compute the delay gradient, TIMELY computes the difference between two consecutive RTT samples. We normalize this
+difference by dividing it by the minimum RTT, obtaining a dimensionless quantity. In practice, the exact value of the
+minimum RTT does not matter since we only need to determine if the queue is growing or receding. We therefore use a
+fixed value representing the wire propagation delay across the datacenter network, which is known ahead of time.
+```
+
+Algortithms actually divide `emwaDiff` not `rttDiff`. Based on what I can see `D_(minRTT)` is one of:
+
+* the smallest measureable RTT
+* the smallest elapsed time allowed between Timely updates
+
+## Case: `RTT in [T_low, T_High]`
+
+
+## Case: `RTT>maxModelRtt`
+
+In the remaning work, I compare and contrast Timely's model in [3] to the patched version in ECN [1].
 
 
 
+ECN 4.1
+while the chunks themselves are sent at near-line rate [21].
+TIMELY designers made this decision for engineering reasons - they wanted to avoid taking dependence on hardware
+rate limiters.
 
 
 
