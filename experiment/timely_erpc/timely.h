@@ -153,7 +153,7 @@ private:
   double d_lineRateBps;                             // calculated TX rate (bytes-per-second)
   double d_rawLineRateBps;                          // calculated TX rate (bytes-per-second) before bounding
   double d_prevTimeUs;                              // absolute time in microseconds 'update' was last called
-  double d_prevRttUs;                               // last rtt provided in 'update'
+  double d_prevRttUs;                               // last RTT provided in 'update'
   double d_weightedRttDiffUs;                       // weighted RTT difference
 
 public:

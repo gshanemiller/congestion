@@ -4,10 +4,10 @@ The purpose of this repository is to provide a *Practitioner's Guide* to impleme
 * Concepts for congestion control, packet drop/loss are well explained
 * Implementation choices are well described
 * Code is provided to concretely demonstrate concepts and implementation
-* A guide is provided on how congestion control might be incorporate into a DPDK messaging library
+* A guide is provided on how congestion control might be incorporated into a DPDK messaging library
 
 # Papers
-The following papers are a good starting place. Many papers are co-authored by Google, Intel, and Microsoft and/or are used in production. Packets moving between data centers through WAN is not in scope. This work is for packets moving inside a corporate network. No code uses the kernel; this is all user-space typically done inconjunction with DPDK/RDMA.
+The following papers are a good starting place. Many papers are co-authored by Google, Intel, and Microsoft and/or are used in production. Packets moving between data centers through WAN is not in scope. This work is for packets moving inside a corporate network. No code uses the kernel; this is all user-space work typically done inconjunction with DPDK/RDMA.
 
 * [1] [ECN or Delay: Lessons Learnt from Analysis of DCQCN and TIMELY](http://yibozhu.com/doc/ecndelay-conext16.pdf)
 * [2] [ECN Github](https://github.com/jitupadhye-zz/rdma)
@@ -24,9 +24,8 @@ Points of orientation:
 * [1] contains a correction to [3] and also describes DCQCN with ECN but not Carousel. ECN requires switches/routers to be ECN enabled. Equinix does not or cannot do ECN, for example.
 * [1] concludes DCQCN is better than Timely
 * [9] describes another approach handily beating Timely, however, the "deployment of RCC relies on high precision clock synchronization throughout the datacenter network. Some recent research efforts can reduce the upper bound of clock synchronization within a datacenter to a few hundred nanoseconds, which is sufficient for our work."
-* Timely congestion control therefore is the least proscriptive, and probably worst performing
+* Timely congestion control therefore is the least proscriptive, and probably worst performing. I would note most DPDK/RDMA work like [RAMCloud](https://dl.acm.org/doi/pdf/10.1145/2806887) rely on lossless packet hardware atypical in corporate data centers. This is another reason why Timely is in scope
 * eRPC [6,7] uses Carousel [8] and Timely [3,4,5] to good effect
-* It's not clear at the time of this writing exactly where Timely stops and Carousel roles and responsibilities start
 
 # Build Code
 In an empty directory do the following assuming you have a C++ tool chain and cmake installed:
@@ -122,7 +121,9 @@ the queuing with respect to time, instead of trying to maintain a standing queue
 the rate mismatch at the bottleneck queue.
 ```
 
-eRPC [7] uses Intel's `rdtsc()` to take time stamps eventually converting those measurements to microseconds when Timely's update function is run. What you use and how you use it depends on eliminating the serialization time. HW timestamps are strongly preferred because Timely only works if RTTs are accurate. [1,3] uses NIC provided timestamps. RTT is defined in [3] section 3.1:
+It should be noted that Timely work never directly engages the number of congestion points. Senders move packets through one switch minimum if the destination is in the same subnet. If the destination is in another subnet, packets typically move through two switches and a router. There's additional contributions in the destination NIC. Therefore Timely is best contextualized as either point to point communication with a single congestion point in the middle, or the congestion point is an aggregation of all the intervening queues between senders and receivers.
+
+eRPC [7] uses Intel's `rdtsc()` to take time stamps eventually converting those measurements to microseconds when Timely's update function is run. [1,3] uses NIC provided timestamps. What you use and how you use it depends on eliminating the serialization time. HW timestamps are strongly preferred because Timely only works if RTTs are accurate. RTT is defined in [3] section 3.1:
 
 ```
 RTT = t_completion - t_send - Seg/NLR
@@ -140,7 +141,7 @@ In otherwords, RTT is just end-start minus the time it takes serialize bytes ont
     1/(10*1000*1000*1000) sec/bits * (64*1024*8) bits = .000052428sec ~= 52us or .8ns/byte
 ```
 
-If RTTs are of the same order as serialization, RTT should clearly not be penalized. Serialization does not reflect congestion outside the transmitting box.
+RTTs at the same order as serialization penalize Timely because this time does not reflect congestion outside the transmitting box.
 
 The Timely event loop is:
 
@@ -153,9 +154,9 @@ The Timely event loop is:
 [3] section 4.2 describes the model's equations. It envisions N end hosts, or what eRPC calls connected sessions, all sending data simulteanously with a combined rate `y(t) bytes/sec`. The N transmitters share a congestion point e.g. a bottle neck queue. Suppose this CP (Congestion Point) empties its queue at rate `C bytes/sec`, and further suppose CP's queuing delay in time is `q(t)` (units time). If at any point in time `t` we have `y(t)>C` the congestion point gets worse by the amount `y(t)-C` and vice-versa. Putting these pieces together the change in the queuing delay is:
 
 ```
-dq(t) sec    y(t)-C   (bytes/sec)
-----  ---  = ------   -----------
- dt   sec      C      (bytes/sec)
+dq(t) sec    y(t)-C   bytes/sec
+----  ---  = ------   ---------
+ dt   sec      C      bytes/sec
 ```
 
 Ideally Timely will converge on what ECN [1] calls a fixed point where the change is zero. This means senders and CP balance. Some observations are in order. Consider a time instant `t`:
@@ -164,7 +165,7 @@ Ideally Timely will converge on what ECN [1] calls a fixed point where the chang
 * The right hand side divides by `C` making a unitless number representing the ratio of excesss (or deficiency) bytes CP can handle
 * And thus `dq(t)/t` is just the previous point by another name through equality
 
-Critically, Timely introduces RTTs by asserting:
+Timely introduces RTTs by asserting:
 
 ```
 dRTT    dq(t)
@@ -172,7 +173,9 @@ dRTT    dq(t)
  dt      dt
 ```
 
-Recall Timely claims "it is not possible to control the queue size." Note `q(t)` is the time ("queuing delay") to deplete the queue not queue size according to Timely [3]. But [1] table 2 says `q(t)` is "queue size." Unfortuantely, Timely articles and code do not thoroughly explicate units.
+Crucially, this assertion eliminates knowing `C`.
+
+Recall Timely claims "it is not possible to control the queue size." `q(t)` is the time ("queuing delay") to deplete the queue not queue size according to Timely [3]. But [1] table 2 says `q(t)` is "queue size." Unfortuantely, Timely articles and code do not thoroughly explicate units, which is a silly unforced error. I'll return to this issue below.
 
 The Timely model is equipped with a RTT bound called `[T_low, T_High]` which selects how the TX rate is updated:
 
@@ -185,7 +188,7 @@ The Timely model is equipped with a RTT bound called `[T_low, T_High]` which sel
 
 When RTTs are in `[minModelRtt, maxModelRtt]` individual sender rates are computed through a derivative related to `dq(t)/t`. If `RTT>maxModelRtt` the rate is decreased through a multiplicative factor. Finally, If the `RTT<minModelRtt` the new rate is just the old rate plus an additive factor. 
 
-This establishes Timely basics. Putting aside the simple additve case, and before addressing the computations for the other two cases, we need to explain Timely's alpha, beta, and normalized gradient terms. 
+This establishes Timely basics. Putting aside the simple additve case, and before addressing the computations for the other two cases, we need to explain Timely's alpha and normalized gradient terms. 
 
 ## EWMA (Alpha)
 EWMA (Exponentially Weight Moving Average) is a variation on a simple moving average where recent terms have more impact. Since Timely is based on a *time series of RTT changes*, it first smooths change jitter. This is called `rttDiff` in [1,3] and what I call `emwaDiff` to differentiate between it from `currentRtt-oldRtt`.
@@ -195,27 +198,28 @@ emwaDiff_0 = k_0
 emwaDiff_n = alpha*rttDiff_n + (1-alpha)*emwaDiff_(n-1)
 
 where:
-    n         (subscript) is the iteration in recurrence 0,1,2,...
-    k_0       is the initial value for emwaDiff typically 0
-    alpha     is in [0,1]. lower values smooth more and 1 is no smoothing
-    rttDiff_n is the difference in RTTs at the nth step e.g. rtt_n-rtt_(n-1)
+       n         (subscript) is the iteration in recurrence 0,1,2,...
+       k_0       is the initial value for emwaDiff typically 0
+       alpha     is in [0,1]. lower values smooth more and 1 is no smoothing
+       rttDiff_n is the difference in RTTs at the nth step e.g. rtt_n-rtt_(n-1)
 ```
 
-As the recurrence proceeds n=0,1,2,3... later terms contribute less to moving average. [Wikipedia gives the same forumua](https://en.wikipedia.org/wiki/Exponential_smoothing). Example table for alpha=.48. Note `emwaDiff` changes less drastically than the actual RTT difference:
+[Wikipedia gives the same forumua](https://en.wikipedia.org/wiki/Exponential_smoothing) used in Timely. As the recurrence proceeds n=0,1,2,3... later terms contribute more. Example table for alpha=.48 appears below. Note `emwaDiff` changes less drastically compared to the actual RTT difference:
 
 ```
+alpha = 0.48
 +----------+---------------+----------+-----------+
-| RTT (us) | RTT Diff (us) | emwaDiff | Iteration |
+| RTT (us) | RTT diff (us) | emwaDiff | Iteration |
 +----------+---------------+----------+-----------+
-| 466      | 0             | 0        | 0         |
+| 351      | 0             | 0        | 0         |
 +----------+---------------+----------+-----------+
-| 431      | -35           | -16.8    | 1         |
+| 50       | -301          | -144.48  | 1         |
 +----------+---------------+----------+-----------+
-| 94       | -337          | -178.56  | 2         |
+| 352      | +302          | +69.83   | 2         |
 +----------+---------------+----------+-----------+
-| 489      | 395           | 11.04    | 3         |
+| 83       | -269          | -92.81   | 3         |
 +----------+---------------+----------+-----------+
-| 351      | -138          | -55.2    | 4         |
+| 86       | +3            | -46.82   | 4         |
 +----------+---------------+----------+-----------+
 ```
 
@@ -234,23 +238,141 @@ Algorithms divide `emwaDiff` not `rttDiff` by `D_(minRTT)`. Based on what I can 
 * the smallest measureable RTT say 5us
 * the smallest elapsed time allowed between Timely updates
 
-## Case: `RTT in [T_low, T_High]`
-
 ## Case: `RTT>maxModelRtt`
+This case applies when the measured RTT exceeds the Timely model maximum called `T_high`. When RTTs are too high, Timely reduces the rate multiplying down through a factor based on `beta`. [3 p543] section 4.3 notes:
+
+```
+We use the instantaneous rather than smoothed RTT. While this may seem unusual, we can slow down in response to a
+single overly large RTT because we can be confident that it signals congestion, and our priority is to maintain low
+packet latencies and avoid loss."
+```
+
+The reference to "smoothed RTT" is a typo. As explained above, RTT differences are smoothed not RTTs. The formula reads:
+
+```
+R = R(1 - beta(1 - T_high ) )
+                   ------
+                    RTT
+
+where:
+       R      is the current rate (bytes/sec) assigned to R on the left making new rate
+       beta   is a dimensionless fixed constant in [0,1] and (0,1) in practice
+       T_high is the maximum model RTT (us) used to select this case
+       RTT    is the current RTT (us)
+```
+
+When RTT exceeds `T_high` the term `1-T_high/RTT` gives a value in `(0,1)`. This term is decreased by `beta` through multiplication. In this way, the worse the RTT is, the smaller the new `R` becomes through the two `1-` expressions. And vice-versa: if RTTs are barely above `T_high`, the new `R` is decreased less.
+
+## Case: `RTT in [T_low, T_High]`
+This case applies when the current RTT is in `[T_low, T_High]`. It is the most complicated computation. And this is where [1] and [3] fundamentally differ. In this write-up I'll follow [1] because [1] claims its algoritm achieves `dq/dt=0` while [3] does not. [7] codes for this correction too.
 
 ## Timely Algorithm Summary
+The Timely event loop is:
 
-ECN 4.1
-while the chunks themselves are sent at near-line rate [21].
-TIMELY designers made this decision for engineering reasons - they wanted to avoid taking dependence on hardware
-rate limiters.
+1. Fix initial sending rate R
+2. Send data at rate R
+3. Measure the RTT 'r' for data just sent
+4. Compute new rate R = timely(R, r)
 
+[7] sets initial rate R to the NIC's bandwidth; [1] section 4 sets it to `C/(n+1)` where 'n' is the number of connected sessions sharing the same NIC. `C` is the NIC's bandwidth. [1] also describes `C` in section 3.1 as "bandwidth of bottleneck link"; I assume section 4 is a typo. Use HW generated RTTs being careful to exclude serialization time. 
+
+HW rate limiters, if any, should be disabled. Quoting [1] section 4.2:
+
+```
+This analysis begs the question – why does TIMELY work well in practice, as reported in [21]? The answer appears to lie
+in the fact that the TIMELY implementation does not use hardware rate limiters. Instead, the TIMELY implementation
+controls rate by adjusting delay between successive transmissions of chunks that can be as large as 64KB. Each chunk is
+sent out at or near line rate.
+```
+
+Each Timely update falls into one of three cases by comparing the current, actual RTT with two model bounds:
+
+```
+                  T_low or                T_high or
+0               minModelRtt              maxModelRtt
++--------------------+----------------------+---------------->
+| additive increase  | gradient based +/-   | multiplicative
+| to new rate        | change to new rate   | decrease in new rate
+```
+
+Timely uses the following constants for its computations. In code they are represented as `double`s. I provide illustrative defaults. The min/max rates at bottom are optional. They can be use to bound the rate used by application code once the raw Timely value is computed. For the most part Timely code and papers use bytes/sec for rates and microseconds (us) for RTTs:
+
+```
+const double d_alpha = 0.46;              // EWMA smoothing factor (dimensionless in [0,1])
+const double d_beta = 0.26;               // multiplicative decrease factor (dimensionless in [0,1])
+const double d_delta = 5*1000*1000.0;     // additive rate increase 5 million bytes/second
+
+const double d_minRttUs       = 2;        // RTT <= (2us) not considered; state unchanged. Can double as D_(minRTT)
+const double d_minModelRttUs  = 50;       // minimum model RTT limit (50us) (T_low) for choosing which update case to run
+const double d_maxModelRttUs = 1000;      // maximum model RTT limit (500 us) (T_high) for choosing which update case to run
+
+const double d_maxNicBps;                 // Maximum NIC bandwidth (bytes/sec) shared by connected sessions
+
+const double d_minRateBps = 15*1000*1000; // minimum transmit rate bytes/sec; application rate must >= this limit (optional)
+const double d_maxRateBps = d_maxNicBps;  // maximum transmit rate bytes/sec; application rate must <= this limit (optional)
+```
+
+Timely also maintains the following state held in C++ class members or C-struct:
+
+```
+double d_lineRateBps;                     // calculated, bounded TX rate (bytes-per-second) applications use
+double d_rawLineRateBps;                  // calculated TX rate (bytes-per-second) before bounding
+double d_prevRttUs;                       // last RTT (us) provided to 'update'
+double d_emwaDiffUs;                      // last EWMA RTT difference
+```
+
+## Fluid Confusion
+A major problem with [1] is its putative Timely algorithm in section 4.1 or 4.3 bears small resemblence to its fluid equations in figure 7. The paper does not engage the question of whether the fluid model could form the basis of a Timely implementation in code. It makes many references to `C, q(t)` which in general sends don't know. [1] also describes `q(t)` as queue length (bytes) whereas Timely [3] describes it as the time required to drain the congestion point's queue. In this section I analyze the fluid equations.
+
+[1] Equation 20 reads:
+
+```
+dq(t) bytes                      
+----          = sum(R_i(t)) - C  bytes/sec
+ dt   sec
+```
+
+which just conveys the queue size in bytes at the congestion point changes in time equal to the difference between all the sender rates `R_i(t))` and `C` at time `t`. `C` is the rate at which the congestion point drains its queue. 
+
+The change in the computed rate (equation 21) builds on `\tau_{i}^*`, and `\tau^'`:
+
+```
+   *
+tau  = max(Seg/R_i, D_minRtt)  rate update interval (units = time)
+   i
+
+
+   '   q(t)    MTU
+tau  = ---- +  --- + D_prop    feed back delay      (units = time)
+        C       C
+```
+
+`\tau_{i}^*` is the minimum time to put something on to the wire for sender `i` at rate `R_i`. `D_minRtt` enforces a maximum update frequency. Timely updates can start only after this period elapses. `\tau^'` is misnamed. It should reference RTT. When a sender puts new data onto the wire, it's enqueued at the end of the congestion point's buffer. `\tau^' is the time it takes to flush all the earlier packets plus last packets adding `D_prop` to get a signal back. As such the term `t-`\tau^'` models the time `now` minus the last RTT.
+
+The rate update equation 21 gives the amount by which the rate `R_i` for sender `i` changes time. It's a multi-function selecting an update formula depending on how RTTs compare to model bounds `[T_low, T_high]`. I now focus on the formulas for selecting a case.
+
+F
+
+
+
+
+
+ 
+
+
+
+
+
+
+
+doc erpc changes to basic timely
+doc fluid model [1] v. timely [3]
 
 
 
 
 # Milestone#1: Basic Timely Model
-[1] probably does the best job at describing the Timely model update function. It fixes a bug in the original algorithm described in [4]. The fluid models in [1] can be found in [2]. However, things get complicated from here. First, eRPC [7] adds factors (`delta_factor, md_factor`) that do not appear in [1]. Its alpha/beta parameters are considerably different. The fluid models [2] are mathlab simulation code. Although easy to follow, the input to the Timely update method takes queue length not RTT. And it's not clear that the fluid model algorithm is a valid for use in code. [1] writes:
+[1] probably does the best job at describing the Timely model update function. It fixes a bug in the original algorithm described in [3]. The fluid models in [1] can be found in [2]. However, things get complicated from here. First, eRPC [7] adds factors (`delta_factor, md_factor`) that do not appear in [3]. Its alpha/beta parameters are considerably different compared to [1]. The fluid models [2] are mathlab simulation code. Although easy to follow, the input to the Timely update method takes queue length not RTT. And it's not clear that the fluid model algorithm is a valid for use in code. [1] writes:
 
 ```
 The fluid model (by its very nature) essentially assumes smooth and continuous transmission of data. The TIMELY
@@ -258,7 +380,7 @@ implementation is more bursty, since rate is adjusted by modulating gaps between
 chunks.
 ```
 
-Note that eRPC [6,7] unlike the Timely paper [3] is not sending prepared large chunks of data e.g. 16 or 64Kb. Most RPCs have small requests probably in one packet less than 1K. Responses, however, could be large. 
+Note that eRPC [6,7] unlike the Timely paper [3] is not sending prepared large chunks of data e.g. 16 or 64Kb. Most RPCs have small requests probably in one packet less than 1K. Responses, however, could be large and variable.
 
 ## Timely Basic Model
 [This example implements the patched Timely model from ECN paper](https://github.com/gshanemiller/congestion/blob/main/experiment/timely_basic/timely.h). It periodically computes negative rates e.g. what the code calls raw values. Based on this code, the model parameters [do not look quite right](https://github.com/gshanemiller/congestion/blob/main/experiment/timely_basic/data.png):
