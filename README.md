@@ -122,7 +122,7 @@ the queuing with respect to time, instead of trying to maintain a standing queue
 the rate mismatch at the bottleneck queue.
 ```
 
-eRPC [7] uses Intel's `rdtsc()` to take time stamps eventually converting those measurements to microseconds when Timely's update function is run. [1,3] uses NIC provided timestamps. RTT is defined in [3] section 3.1:
+eRPC [7] uses Intel's `rdtsc()` to take time stamps eventually converting those measurements to microseconds when Timely's update function is run. What you use and how you use it depends on eliminating the serialization time. HW timestamps are strongly preferred because Timely only works if RTTs are accurate. [1,3] uses NIC provided timestamps. RTT is defined in [3] section 3.1:
 
 ```
 RTT = t_completion - t_send - Seg/NLR
@@ -137,10 +137,10 @@ where
 In otherwords, RTT is just end-start minus the time it takes serialize bytes onto the wire. For example, it takes 52 µs to serialize 64KB on a 10 Gbps (10 Giga bits/second) NIC connection:
 
 ```
-    1/(10*1000*1000*1000) sec/bits * (64*1024*8) bits = .000052428sec ~= 52us
+    1/(10*1000*1000*1000) sec/bits * (64*1024*8) bits = .000052428sec ~= 52us or .8ns/byte
 ```
 
-If RTTs are of the same order as the serialization time, RTT should clearly not be penalized. Serialization does not reflect congestion outside the transmitting box.
+If RTTs are of the same order as serialization, RTT should clearly not be penalized. Serialization does not reflect congestion outside the transmitting box.
 
 The Timely event loop is:
 
@@ -188,28 +188,28 @@ When RTTs are in `[minModelRtt, maxModelRtt]` individual sender rates are comput
 This establishes Timely basics. Putting aside the simple additve case, and before addressing the computations for the other two cases, we need to explain Timely's alpha, beta, and normalized gradient terms. 
 
 ## EWMA (Alpha)
-EWMA (Exponentially Weight Moving Average) is a variation on a simple moving average where recent terms have a less impact. Since Timely is based on a time series of *RTT changes*, it first smooths out change jitter. This is called `rttDiff` in [1,3] and what I call `emwaDiff` to differentiate between it and `currentRtt-oldRtt`.
+EWMA (Exponentially Weight Moving Average) is a variation on a simple moving average where recent terms have more impact. Since Timely is based on a *time series of RTT changes*, it first smooths change jitter. This is called `rttDiff` in [1,3] and what I call `emwaDiff` to differentiate between it from `currentRtt-oldRtt`.
 
 ```
 emwaDiff_0 = k_0
 emwaDiff_n = alpha*rttDiff_n + (1-alpha)*emwaDiff_(n-1)
 
 where:
-    n         (subscript) is the iteration in recurrence 0,1,2,3...
+    n         (subscript) is the iteration in recurrence 0,1,2,...
     k_0       is the initial value for emwaDiff typically 0
     alpha     is in [0,1]. lower values smooth more and 1 is no smoothing
     rttDiff_n is the difference in RTTs at the nth step e.g. rtt_n-rtt_(n-1)
 ```
 
-As the recurrence proceeds n=0,1,2,3... later terms contribute less to moving average. [Wikipedia gives the same forumua](https://en.wikipedia.org/wiki/Exponential_smoothing). Example table for alpha=.48. Note how `emwaDiff` changes less drastically then RTT diff:
+As the recurrence proceeds n=0,1,2,3... later terms contribute less to moving average. [Wikipedia gives the same forumua](https://en.wikipedia.org/wiki/Exponential_smoothing). Example table for alpha=.48. Note `emwaDiff` changes less drastically than the actual RTT difference:
 
 ```
 +----------+---------------+----------+-----------+
 | RTT (us) | RTT Diff (us) | emwaDiff | Iteration |
 +----------+---------------+----------+-----------+
-| 466		   | 0             | 0.       | 0         |
+| 466      | 0             | 0        | 0         |
 +----------+---------------+----------+-----------+
-| 431	     | -35           | -16.8    | 1         |
+| 431      | -35           | -16.8    | 1         |
 +----------+---------------+----------+-----------+
 | 94       | -337          | -178.56  | 2         |
 +----------+---------------+----------+-----------+
@@ -229,19 +229,16 @@ minimum RTT does not matter since we only need to determine if the queue is grow
 fixed value representing the wire propagation delay across the datacenter network, which is known ahead of time.
 ```
 
-Algortithms actually divide `emwaDiff` not `rttDiff`. Based on what I can see `D_(minRTT)` is one of:
+Algorithms divide `emwaDiff` not `rttDiff` by `D_(minRTT)`. Based on what I can see in code it's one of:
 
-* the smallest measureable RTT
+* the smallest measureable RTT say 5us
 * the smallest elapsed time allowed between Timely updates
 
 ## Case: `RTT in [T_low, T_High]`
 
-
 ## Case: `RTT>maxModelRtt`
 
-In the remaning work, I compare and contrast Timely's model in [3] to the patched version in ECN [1].
-
-
+## Timely Algorithm Summary
 
 ECN 4.1
 while the chunks themselves are sent at near-line rate [21].
