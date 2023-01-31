@@ -31,7 +31,7 @@ Points of orientation:
 In an empty directory do the following assuming you have a C++ tool chain and cmake installed:
 
 1. git clone https://github.com/gshanemiller/congestion.git
-2. mkdir build
+2. mkdir build && cd build
 3. cmake ..
 
 All tasks/libraries can be found in the './build' directory
