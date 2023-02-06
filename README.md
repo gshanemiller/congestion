@@ -7,7 +7,7 @@ The purpose of this repository is to provide a *Practitioner's Guide* to impleme
 * A guide is provided on how congestion control might be incorporated into a DPDK messaging library
 
 # Papers
-The following papers are a good starting place. Many papers are co-authored by Google, Intel, and Microsoft and/or are used in production. Packets moving between data centers through WAN is not in scope. This work is for packets moving inside a corporate network. No code uses the kernel; this is all user-space work typically done inconjunction with DPDK/RDMA.
+The following papers are a good starting place. Many papers are co-authored by Google, Intel, and Microsoft and/or are used in production. Packets moving between data centers through WAN is not in scope. This work is for packets moving inside a corporate network. No code uses the kernel; this is all user-space work typically done with DPDK/RDMA.
 
 * [1] [ECN or Delay: Lessons Learnt from Analysis of DCQCN and TIMELY](http://yibozhu.com/doc/ecndelay-conext16.pdf)
 * [2] [ECN Github](https://github.com/jitupadhye-zz/rdma)
