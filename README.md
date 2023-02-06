@@ -52,7 +52,7 @@ Congestion control involves four major problems:
 
 * Detect and correct packet drop/loss. Detection usually involves timestamps and sequence numbers. Resending packets is more involved
 * Detect and respond to congestion by not sending too much data too soon e.g. [1-5, 9]
-* And with (2) determine when to send new data without exasperbating congestion e.g. [8]
+* Determine when to send new data without exasperbating congestion e.g. [8]
 * Do all of the above without wasting CPU
 
 I suggest the following milestone trajectory. It's valid *provided* Timely is the goto congestion control method. I report other methods above, however, they arguably impose impactical constraints.
