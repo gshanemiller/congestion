@@ -121,9 +121,9 @@ the queuing with respect to time, instead of trying to maintain a standing queue
 the rate mismatch at the bottleneck queue.
 ```
 
-It should be noted that Timely work never directly engages the number of congestion points. Senders move packets through one switch minimum if the destination is in the same subnet. If the destination is in another subnet, packets typically move through two switches and a router. There's additional contributions in the destination NIC. Therefore Timely is best contextualized as either point to point communication with a single congestion point in the middle, or the congestion point is an aggregation of all the intervening queues between senders and receivers.
+It should be noted that Timely work never directly engages the number of congestion points. Timely is best contextualized as either point to point communication with a single congestion point in the middle, or the congestion point is an aggregation of all the intervening queues between senders and receivers.
 
-eRPC [7] uses Intel's `rdtsc()` to take time stamps eventually converting those measurements to microseconds when Timely's update function is run. [1,3] uses NIC provided timestamps. What you use and how you use it depends on eliminating the serialization time. HW timestamps are strongly preferred because Timely only works if RTTs are accurate. RTT is defined in [3] section 3.1:
+Timely only works if RTTs are accurate. RTT is defined in [3] section 3.1:
 
 ```
 RTT = t_completion - t_send - Seg/NLR
@@ -151,7 +151,7 @@ The Timely event loop is:
 4. Compute new rate R = timely(R, r)
 5. Goto 2
 
-[3] section 4.2 describes the model's equations. It envisions N end hosts, or what eRPC calls connected sessions, all sending data simulteanously with a combined rate `y(t) bytes/sec`. The N transmitters share a congestion point e.g. a bottle neck queue. Suppose this CP (Congestion Point) empties its queue at rate `C bytes/sec`, and further suppose CP's queuing delay in time is `q(t)` (units time). If at any point in time `t` we have `y(t)>C` the congestion point gets worse by the amount `y(t)-C` and vice-versa. Putting these pieces together the change in the queuing delay is:
+[3] section 4.2 describes the model's equations. It envisions N end hosts, or what eRPC calls connected sessions, all sending data simulteanously with a combined rate `y(t) bytes/sec`. The N transmitters share a congestion point e.g. a bottle neck queue. Suppose this congestion point empties its queue at rate `C bytes/sec`, and further suppose its queuing delay is `q(t)` (units time). `q(t)` is how much time it takes to drain existing inqueue data. If at any point `y(t)>C` the congestion point gets worse by the amount `y(t)-C` and vice-versa. Putting these pieces together the change in the queuing delay is:
 
 ```
 dq(t) sec    y(t)-C   bytes/sec
