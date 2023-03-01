@@ -104,7 +104,7 @@ DPDK setting
 
 # Milestone Completion Status
 0. **DONE**: see [congestion.pdf](https://github.com/gshanemiller/congestion/blob/main/congestion.pdf) sections 3,4
-1. **DONE** See [Timely Basic](https://github.com/gshanemiller/congestion/tree/main/experiment/timely_basic)
+1. **DONE** See [Timely Basic](https://github.com/gshanemiller/congestion/tree/main/experiment/timely_basic), and [Timely eRPC](https://github.com/gshanemiller/congestion/tree/main/experiment/timely_erpc)
 2. **STARTED**
 3. Not started
 4. Not started
