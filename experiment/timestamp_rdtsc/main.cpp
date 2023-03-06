@@ -6,12 +6,14 @@
 #include <stdio.h>
 #include <x86intrin.h>
 
-#include <array>
+#include <vector>
+
+#include <CommFunc.h>
 
 const int kMAX = 100;
 
-std::array<double, kMAX> frequency1;
-std::array<double, kMAX> frequency2;
+std::vector<double> frequency1;
+std::vector<double> frequency2;
 
 int pinToCore(int coreId) {
   cpu_set_t mask;
@@ -93,6 +95,13 @@ double rdtsc2() {
 }
 
 int main() {
+  // rdtsc is pointless unless pinned to a core
+  // for our purposes any valid core works
+  pinToCore(10);
+
+  frequency1.resize(kMAX);
+  frequency2.resize(kMAX);
+
   for (unsigned i=0; i<kMAX; ++i) {
     frequency1[i] = rdtsc1();
   }
@@ -101,13 +110,11 @@ int main() {
     frequency2[i] = rdtsc2();
   }
 
-  for (unsigned i=0; i<kMAX; ++i) {
-    printf("rdtsc1: sample %u: %.8lf\n", i, frequency1[i]);
-  }
-
-  for (unsigned i=0; i<kMAX; ++i) {
-    printf("rdtsc2: sample %u: %.8lf\n", i, frequency2[i]);
-  }
+  printf("Histogram of rdtsc clock frequency per std::chrono\n");
+  CommFunc::summarize(frequency1);
+  
+  printf("\n\nHistogram of rdtsc clock frequency per clock_gettime\n");
+  CommFunc::summarize(frequency2);
 
   return 0;
 }
